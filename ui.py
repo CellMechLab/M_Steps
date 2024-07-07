@@ -231,10 +231,10 @@ class MainWindow(QWidget):
         for x in stats:
             dataset4 += operations.intensity(x,True) 
         
-        df1 = pd.DataFrame(dataset1)
-        df2 = pd.DataFrame(dataset2)
-        df3 = pd.DataFrame(dataset3)
-        df4 = pd.DataFrame(dataset4)
+        df1 = pd.DataFrame(dataset1,columns=['Count'])
+        df2 = pd.DataFrame(dataset2,columns=['Intensity'])
+        df3 = pd.DataFrame(dataset3,columns=['Duration'])
+        df4 = pd.DataFrame(dataset4,columns=['Relative intensity'])
 
         with pd.ExcelWriter(filename, engine='openpyxl') as writer:
             df1.to_excel(writer, sheet_name='Number')
