@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QDialog,QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QLineEdit, QFileDialog
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QCursor
 import pyqtgraph as pg
 import numpy as np
@@ -7,7 +7,43 @@ import pandas as pd
 import operations
 import sys
 
+class FloatInput(QLineEdit):
+    value_changed = Signal(float)  # Define the signal
 
+    def __init__(self, default_value=0.0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.original_color = self.palette().color(self.foregroundRole())
+        self.textChanged.connect(self.on_text_changed)
+        self.editingFinished.connect(self.on_editing_finished)
+        self.set_default_value(default_value)
+
+    def set_default_value(self, value):
+        if self.is_valid(value):
+            self.setText(f"{value:.2f}")
+            self.setStyleSheet(f"color: {self.original_color.name()};")
+        else:
+            self.setText("0.00")
+            self.setStyleSheet("color: red;")
+
+    def on_text_changed(self):
+        self.setStyleSheet("color: red;")
+
+    def on_editing_finished(self):
+        self.setStyleSheet(f"color: {self.original_color.name()};")
+        try:
+            value = float(self.text())
+            if self.is_valid(value):
+                self.setStyleSheet(f"color: {self.original_color.name()};")
+                self.value_changed.emit(value)  # Emit the signal
+            else:
+                self.setStyleSheet("color: red;")  # Keeps the color red if input is invalid
+        except ValueError:
+            self.setStyleSheet("color: red;")  # Keeps the color red if input is invalid
+
+    def is_valid(self, value):
+        return 0.00 <= value <= 0.99
+    
+    
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -31,8 +67,7 @@ class MainWindow(QWidget):
         self.windowSlider.setTickInterval(2)
         self.windowLabel = QLabel("101")
         self.thresholdLabel = QLabel("Threshold:")
-        self.thresholdInput = QLineEdit("0.10")
-        self.thresholdInput.setValidator(QDoubleValidator(0.00, 9.99, 2))
+        self.thresholdInput = FloatInput(default_value=0.10)
         self.memoryShowLabel = QLabel("Memory:")
         self.memorySlider = QSlider(Qt.Horizontal)
         self.memorySlider.setMinimum(1)
@@ -63,15 +98,14 @@ class MainWindow(QWidget):
         # Signals
         self.openButton.clicked.connect(self.openFile)
         self.windowSlider.valueChanged.connect(self.updateWindowLabel)
+        self.windowSlider.sliderReleased.connect(self.plotTracks)
         self.memorySlider.valueChanged.connect(lambda value: self.memoryLabel.setText(str(value)))
+        self.memorySlider.sliderReleased.connect(self.plotTracks)
         self.prevButton.clicked.connect(self.previousPage)
         self.nextButton.clicked.connect(self.nextPage)
         self.previewButton.clicked.connect(self.previewResults)
         self.saveButton.clicked.connect(self.saveData)
-        
-        self.memorySlider.valueChanged.connect(self.plotTracks)
-        self.thresholdInput.textChanged.connect(self.plotTracks)
-        self.windowSlider.valueChanged.connect(self.plotTracks)
+        self.thresholdInput.value_changed.connect(self.plotTracks)
         self.previewButton.clicked.connect(self.showPreviewModal)
 
         # Adding widgets to layout
