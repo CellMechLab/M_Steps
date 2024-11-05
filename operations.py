@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.signal import savgol_filter as savgol 
+from skimage.restoration import denoise_tv_chambolle
+from scipy.signal import find_peaks
 
 def track(number,data):
     filter = data[:,1]==number
@@ -31,98 +33,79 @@ def openFile(filename):
 
     return tr
 
-def steps(x,sy):
-    baseline = np.median(sy)
-    thresh = baseline+np.std(sy)
-    up = False
-    if sy[0]>thresh:
-        up=True
-    segments = []
-    segment = [sy[0]]
-    xsegment=[x[0]]
-    for i in range(1,len(sy)):
-        cur = sy[i]>thresh
-        if cur is up:
-            segment.append(sy[i])
-            xsegment.append(x[i])    
-        else:            
-            segments.append([xsegment,segment,up])
-            up = cur
-            segment=[sy[i]]
-            xsegment=[x[i]]
-        
-    segments.append([list(xsegment),list(segment),up])
+def filter(y,win=11):
+    return denoise_tv_chambolle(y,max_num_iter=200,weight=win)
+
+def corners(sy,win=121):
+    buffer = int((win-1)/2)
+    x = np.zeros_like(sy)
+    for i in range(buffer,len(sy)-buffer):
+        delta = np.average(sy[i:i+buffer+1])-np.average(sy[i-buffer:i])
+        x[i]=delta
+    return x
+
+def cliffs(dy,height,distance):
+    return find_peaks(dy,height,distance=distance)
+
+def delta(segments,jump):
+    while True:        
+        for j in range(len(segments)-1):
+            yright = np.average(segments[j+1][1])
+            yleft = np.average(segments[j][1])
+            if np.abs(yright-yleft)<jump:
+                x = np.append(segments[j][0],segments[j+1][0])
+                y = np.append(segments[j][1],segments[j+1][1])
+                segments[j]=([x,y,True])
+                segments.pop(j+1)
+                break
+        else:
+            break
     return segments
 
-def fuse(steps,delta):
-    newsteps=[]
-    jjj=0
-    while(jjj<len(steps)):    
-        if len(steps[jjj][0])>delta:
-            newsteps.append(steps[jjj])
-            break
-        jjj+=1
-    jjj+=1
-    while(jjj<len(steps)):    
-        xi,yi,post= steps[jjj]
-        xold,yold,pre = newsteps[-1]
-        if len(xi)<delta:
-            if jjj==len(steps)-1:
-                if post == False:
-                    newsteps.append([xi,yi,False])
-                jjj+=1
-            else:
-                fxi = np.append(np.append(xold,xi),steps[jjj+1][0])
-                fyi = np.append(np.append(yold,yi),steps[jjj+1][1])
-                newsteps[-1]=[list(fxi),list(fyi),pre]
-                jjj+=2            
-        else:
-            newsteps.append([list(xi),list(yi),post])  
-            jjj+=1                  
-    return newsteps
+def create_steps(x,y,ppoints,npoints,memory=0):
+    segments=[]
+    corners = np.append(ppoints,npoints)
+    corners.sort()
+    up=False
+    start = 0
+    for k in corners:
+        xsegment = x[start:k]
+        ysegment = np.ones_like(xsegment)*np.average(y[start:k])
+        segments.append([list(xsegment),list(ysegment),up])    
+        up = not up
+        start=k
+    segments.append([list(x[start:]),list(y[start:]),up])
+    if memory>0:
+        segments = delta(segments,memory)
+    return segments
 
-def flatten(stx):
-    flat=[]
-    for st in stx:
-        flat.append([st[0],np.average(st[1])*np.ones_like(st[0]),st[2]])
-    return flat
-
-def create_steps(x,y,win=101,dth=0.1,memory=100):
-    dy = savgol(y,win,1,1)        
-    sy = savgol(y,win,1)
-    if max(np.abs(dy))<dth:
-        return [[x,np.median(sy)*np.ones_like(sy),False]]
-    stx = steps(x,sy)
-    stx = fuse(stx,memory)    
-    return flatten(stx)
-
-def count_steps(stats):
+def baseline(y):
+    y10 = np.percentile(y,10)
+    return y10
+            
+def count_steps(stats,baseline,isbaseline):
+    if isbaseline is False:
+        return len(stats)
     howmany = 0
-    for s in stats:
-        if s[2] == True:
+    for s in stats:        
+        if baseline-isbaseline<np.average(s[1])< baseline+isbaseline:
             howmany+=1
     return howmany
 
-def intensity(stats,relative = False):
+def intensity(stats,baseline = None,isbaseline=None):
     values = []
     for i in range(len(stats)):
         s = stats[i]
-        if s[2] == True:
-            if relative is False:
-                values.append(s[1][0])
-            else:
-                if i==0:
-                    baseline = stats[i+1][1][0]
-                elif i==len(stats)-1:
-                    baseline = stats[i-1][1][0]
-                else:
-                    baseline = (stats[i-1][1][0]+stats[i+1][1][0])/2
-                values.append(s[1][0]-baseline)
+        if baseline is None:
+            values.append(np.average(s[1]))
+        else:
+            if baseline-isbaseline<np.average(s[1])< baseline+isbaseline:
+                values.append(np.average(s[1])-baseline)
     return values
 
-def duration(stats):
+def duration(stats,baseline,isbaseline):
     values = []
     for s in stats:
-        if s[2] == True:
+        if baseline-isbaseline<np.average(s[1])< baseline+isbaseline:
             values.append(s[0][-1]-s[0][0])
     return values
