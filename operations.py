@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.signal import savgol_filter as savgol 
 from skimage.restoration import denoise_tv_chambolle
 from scipy.signal import find_peaks
 
