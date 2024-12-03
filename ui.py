@@ -218,6 +218,7 @@ class MainWindow(QWidget):
         self.tracksLabel.setText(f"Tracks: {len(self.tracks)}")
         self.ftracks=[]
         self.redtracks=[]
+        #comment
         
     def getDatasets(self):
         stats,baselines=self.getStats()
